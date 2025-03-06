@@ -45,18 +45,51 @@ class TunnelRiders {
         // Tunnel segments and properties
         this.tunnelSegments = [];
         this.maxSegments = 100; // Number of segments in the tunnel
-        this.segmentLength = 1; // Length between segments
+        this.segmentLength = 0.5; // Length between segments (reduced for more density)
         this.tunnelRadius = 5; // Initial tunnel radius
         this.tunnelVariation = 0.2; // Amount of variation in tunnel shape
         this.tunnelCurvature = 0.1; // How much the tunnel curves
         this.lastPosition = new THREE.Vector3(0, 0, 0);
         this.lastDirection = new THREE.Vector3(0, 0, -1);
+        
+        // Noise parameters for smooth variation
+        this.noiseOffset = 0;
+        this.noiseScale = 0.05; // Smaller scale = more dramatic curves
+        this.noiseSpeed = 0.01;
+        this.amplitudeFactor = 4.0; // Increased amplitude for more dramatic swings
+        
+        // Tunnel path control
+        this.pathIndex = 0;
+        this.pathStep = 0.02;
+        
+        // Debug trackers for continuous segments
+        this.segmentCounter = 0;
+        this.lastSegmentId = 0;
+    }
+
+    // Enhanced noise function for more dramatic curves
+    noise(x) {
+        return Math.sin(x) * Math.cos(x * 2.5) * Math.sin(x * 0.8 + Math.cos(x * 3));
+    }
+
+    // Generate path point at given index using noise with more variation
+    getPathPoint(index) {
+        // Create more dramatic x/y movements using the noise function
+        const noiseVal1 = this.noise(index * this.noiseScale);
+        const noiseVal2 = this.noise(index * this.noiseScale + 100);
+        
+        // Apply increased amplitude for more dramatic swings
+        const x = noiseVal1 * this.amplitudeFactor;
+        const y = noiseVal2 * this.amplitudeFactor;
+        const z = -index * this.segmentLength;
+        
+        return new THREE.Vector3(x, y, z);
     }
 
     createTunnelSegment(position, index) {
         // Create a ring geometry for the tunnel segment
-        const radiusSegment = this.tunnelRadius * (1 + Math.sin(index * 0.1) * this.tunnelVariation);
-        const geometry = new THREE.TorusGeometry(radiusSegment, 0.1, 8, 30);
+        const radiusSegment = this.tunnelRadius * (1 + this.noise(index * 0.1) * this.tunnelVariation);
+        const geometry = new THREE.TorusGeometry(radiusSegment, 0.2, 8, 30); // Thicker rings
         
         // Create a material with neon/glow effect
         const color = new THREE.Color();
@@ -74,36 +107,41 @@ class TunnelRiders {
         const segment = new THREE.Mesh(geometry, material);
         segment.position.copy(position);
         
+        // Assign an ID to help track segments
+        segment.userData = { id: this.segmentCounter++ };
+        
         // Rotate to face the direction of travel
-        segment.lookAt(position.clone().add(this.lastDirection));
+        if (this.lastDirection.lengthSq() > 0) {
+            segment.lookAt(position.clone().add(this.lastDirection));
+        }
         segment.rotation.z = index * 0.03; // Add slight rotation for interesting effect
         
         // Add to scene and store reference
         this.scene.add(segment);
+        this.lastSegmentId = segment.userData.id;
         return segment;
     }
 
     createTunnel() {
         // Generate initial tunnel segments along a curved path
         for (let i = 0; i < this.maxSegments; i++) {
-            // Calculate new position with some curvature
-            const offset = new THREE.Vector3(
-                Math.sin(i * this.tunnelCurvature) * 2,
-                Math.cos(i * this.tunnelCurvature * 0.7) * 2,
-                -i * this.segmentLength
-            );
+            // Calculate position along path
+            const position = this.getPathPoint(i);
             
             // Update direction vector (normalized)
             if (i > 0) {
                 this.lastDirection = new THREE.Vector3()
-                    .subVectors(offset, this.lastPosition)
+                    .subVectors(position, this.lastPosition)
                     .normalize();
             }
             
             // Create segment and add to array
-            const segment = this.createTunnelSegment(offset, i);
+            const segment = this.createTunnelSegment(position, i);
             this.tunnelSegments.push(segment);
-            this.lastPosition.copy(offset);
+            this.lastPosition.copy(position);
+            
+            // Update path index
+            this.pathIndex = i;
         }
     }
 
@@ -111,39 +149,72 @@ class TunnelRiders {
         // Speed of travel
         const speed = 0.15;
         
+        // Temporary array to track segments that need recycling
+        const segmentsToRecycle = [];
+        
         // Move all segments toward the camera
         this.tunnelSegments.forEach(segment => {
             segment.position.z += speed;
             
-            // If segment is behind camera, move it to the end of the tunnel
+            // If segment is behind camera, mark for recycling
             if (segment.position.z > 5) {
-                // Calculate new position based on the last segment
-                const lastSegment = this.tunnelSegments[this.tunnelSegments.length - 1];
-                
-                // Get direction vector from previous segments
-                const direction = new THREE.Vector3().subVectors(
-                    this.tunnelSegments[this.tunnelSegments.length - 1].position,
-                    this.tunnelSegments[this.tunnelSegments.length - 2].position
-                ).normalize();
-                
-                // Add some randomness to direction
-                direction.x += (Math.random() - 0.5) * this.tunnelCurvature;
-                direction.y += (Math.random() - 0.5) * this.tunnelCurvature;
-                direction.normalize();
-                
-                // Calculate new position
-                const newPosition = lastSegment.position.clone().add(
-                    direction.multiplyScalar(-this.segmentLength * this.maxSegments)
-                );
-                
-                // Update segment
-                segment.position.copy(newPosition);
-                segment.lookAt(newPosition.clone().add(direction));
-                
-                // Move to end of array (FIFO)
-                this.tunnelSegments.push(this.tunnelSegments.shift());
+                segmentsToRecycle.push(segment);
             }
         });
+        
+        // Process segments that need recycling
+        segmentsToRecycle.forEach(segment => {
+            // Get the current last segment as reference
+            const lastSegment = this.tunnelSegments[this.tunnelSegments.length - 1];
+            
+            // Increment path index for next segment
+            this.pathIndex += 1;
+            
+            // Get next position along the infinite path
+            const newPosition = this.getPathPoint(this.pathIndex);
+            
+            // Calculate direction based on the previous point
+            const prevPoint = this.getPathPoint(this.pathIndex - 1);
+            const direction = new THREE.Vector3()
+                .subVectors(newPosition, prevPoint)
+                .normalize();
+            
+            // Update segment
+            segment.position.copy(newPosition);
+            
+            // Ensure proper orientation
+            if (direction.lengthSq() > 0) {
+                segment.lookAt(newPosition.clone().add(direction));
+            }
+            
+            // Update segment radius for variety
+            const radiusSegment = this.tunnelRadius * (1 + this.noise(this.pathIndex * 0.1) * this.tunnelVariation);
+            // Only create new geometry if necessary to avoid performance issues
+            if (Math.abs(segment.geometry.parameters.radius - radiusSegment) > 0.1) {
+                segment.geometry.dispose(); // Clean up old geometry
+                segment.geometry = new THREE.TorusGeometry(radiusSegment, 0.2, 8, 30);
+            }
+            
+            // Update color
+            const color = new THREE.Color();
+            color.setHSL(this.pathIndex % 10 / 10, 1, 0.5);
+            segment.material.color = color;
+            segment.material.emissive = color;
+            
+            // Rotate segment for added effect
+            segment.rotation.z = this.pathIndex * 0.03;
+            
+            // Update the ID for tracking
+            segment.userData.id = this.segmentCounter++;
+            this.lastSegmentId = segment.userData.id;
+            
+            // Move to end of array (FIFO)
+            this.tunnelSegments.splice(this.tunnelSegments.indexOf(segment), 1);
+            this.tunnelSegments.push(segment);
+        });
+        
+        // Increment noise offset for animation over time
+        this.noiseOffset += this.noiseSpeed;
     }
 
     animate() {
