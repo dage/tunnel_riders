@@ -1,31 +1,24 @@
 # Tunnel Riders
 
-A 3D space tunnel racing game built with Three.js.
+A fast-paced 3D space tunnel racing game built with Three.js.
 
-## Current Status
+## Project Overview
 
-This is an early prototype implementation based on the game specifications. Currently, it includes:
+Tunnel Riders is a web-based game where players pilot a spaceship through procedurally generated tunnels while battling enemies and collecting upgrades. For detailed game mechanics and planned features, see [specs.md](specs.md).
 
-- A procedurally generated 3D tunnel
-- Animation that gives the impression of flying through the tunnel
-- Dynamic tunnel generation with varying shapes and colors
+## Purpose
 
-## How to Run
+This is a "vibe coding" project to explore:
+- How far we can get in 2-3 hours of development
+- Following a pre-generated detailed specification
+- Using AI coding agents in Cursor to accelerate development
 
-1. Clone this repository
-2. Open `index.html` in a modern web browser
-3. No additional setup or build process is required
+## Running the Game
 
-## Technical Implementation
+Simply open `index.html` in a modern web browser.
 
-- The tunnel is created using a series of Three.js TorusGeometry objects
-- Animation is handled using requestAnimationFrame
-- The tunnel procedurally regenerates as you fly through it, creating an endless experience
+## Current Implementation
 
-## Next Steps
-
-Future development will include:
-- Player ship controls
-- Enemy types (monsters and rival spaceships)
-- Combat mechanics with weapons
-- Upgrade system 
+- Procedurally generated tunnel
+- Dynamic colors and shapes
+- Animation system 
